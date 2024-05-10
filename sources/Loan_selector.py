@@ -11,22 +11,22 @@ from common.config import loan_params
 st.title('Mortgage Re-Payments')
 # Input sections for each part of the mortgage
 rate_options = st.session_state['base_rates']
-discount = loan_params.discount_val = st.session_state['discount']
+discount = st.session_state['discount']
 mortgage_parts = [st.session_state['P1'], st.session_state['P2'], st.session_state['P3']]
 with st.container():
     col1, col2, col3 = st.columns(3, gap='large')
     with col1:
-        st.subheader(":blue[Part 1]")
+        st.subheader(":orange[Part 1]")
         rate_type_1 = st.selectbox("Select Rate Type", list(rate_options.keys()), key='part1_rate_type')
         r1 = rate_options[rate_type_1]
         st.write(f"Interest Rate (%): {r1:.2f}")  
     with col2:
-        st.subheader(":blue[Part 2]")
+        st.subheader(":orange[Part 2]")
         rate_type_2 = st.selectbox("Select Rate Type", list(rate_options.keys()), key='part2_rate_type')
         r2 = rate_options[rate_type_2]
         st.write(f"Interest Rate (%): {r2:.2f}")
     with col3:
-        st.subheader(":blue[Part 3]")
+        st.subheader(":orange[Part 3]")
         rate_type_3 = st.selectbox("Select Rate Type", list(rate_options.keys()), key='part3_rate_type')
         r3 = rate_options[rate_type_3]
         st.write(f"Interest Rate (%): {r3:.2f}")
@@ -79,7 +79,7 @@ with st.container():
             total_monthly*12
         ]
     }
-    index = ["interest Part 1", "interest Part 2", "interest Part 3", "Interest", "Amortized", "Total Monthly"]
+    index = ["interest Part 1", "interest Part 2", "interest Part 3", "Interest", "Amortized", "Total"]
     df = pd.DataFrame(data, index=index)
 
     df['Monthly'] = df['Monthly'].astype(int)
@@ -173,18 +173,53 @@ with st.expander("Simulate Rate Adjustments - every 3 months"):
     rate_combinations_adj = list(itertools.product(selected_base_rates_adj.items(), repeat=len(mortgage_parts)))
 
     all_results_adj = []
+    detailed_interests_all = []
     for rates in itertools.product(selected_base_rates_adj.items(), repeat=len(mortgage_parts)):
         for i in range(len(mortgage_parts)):
             # Apply discount to the ith part
-            discounted_rates_adj = [(name, rate - discount if idx == i else rate) for idx, (name, rate) in enumerate(rates)]
-            total_interest_adj, scenario_adj, final_rates_adj = utils.compute_total_interest_and_final_rates(mortgage_parts, discounted_rates_adj, discount, monthly_dec, final_float_rate, duration)
-            all_results_adj.append({'Scenario': scenario_adj, 'Total Interest Paid (kr)': total_interest_adj, 'Final Rates': final_rates_adj})
+            discounted_rates_adj = [(name, rate, 1 if idx == i else 0) for idx, (name, rate) in enumerate(rates)]
+            #print(discounted_rates_adj)
+            total_interest_adj, scenario_adj, final_rates_adj, detailed_interests = utils.compute_total_interest_and_final_rates(mortgage_parts, discounted_rates_adj, discount, monthly_dec, final_float_rate, duration)
+            
+             # Prepare detailed interests text or structured data
+            detailed_interests_text = "; ".join([f"Part {idx+1}: " + ", ".join([f"Rate: {rate:.2f}%, Interest: {interest:.2f}" for rate, interest in part]) for idx, part in enumerate(detailed_interests)])
 
-    df_results_adj = pd.DataFrame(all_results_adj)
-    
+            detailed_dict = {}
+            for idx, part in enumerate(detailed_interests):
+                for rate, interest in part:
+                    detailed_dict[f'Part {idx+1} Rate (%)'] = rate
+                    detailed_dict[f'Part {idx+1} Interest (kr)'] = interest
+
+            all_results_adj.append({
+            'Scenario': scenario_adj,
+            'Discount on': f"Part {i+1}",
+            'Final Rates': final_rates_adj,
+            'Total Interest Paid (kr)': total_interest_adj,
+            'Detailed Interests': detailed_interests_text
+            })
+
+            detailed_interests_all.append({
+            **detailed_dict  # Expand the detailed interests directly into the dictionary
+        })
+
+    df_details_adj = pd.DataFrame(all_results_adj)
+    df_results_adj = df_details_adj.drop(['Detailed Interests'], axis =1)
 
     
     topN_adj = st.slider("Selct number of top scenarios",min_value = 1, max_value = 20, value=5, key='topN_adj')
     top_scenarios_adj = df_results_adj.sort_values(by='Total Interest Paid (kr)').head(topN_adj)  
     st.header(f"Top {topN_adj} Scenarios with Lowest Total Interest Paid Over {duration} Months")
     st.table(top_scenarios_adj)
+
+    if 'show_df' not in st.session_state:
+        st.session_state['show_df'] = False
+
+    if st.button('See detailed adjusted monthly rates'):
+        st.session_state['show_df'] = not st.session_state['show_df']
+
+    df_details_interests = pd.DataFrame(detailed_interests_all)  # ensure it is being created correctly
+
+    if st.session_state['show_df']:
+        top_scenarios_details = df_details_adj.sort_values(by='Total Interest Paid (kr)').head(topN_adj)
+        top_scenarios_details = top_scenarios_details.drop(['Final Rates', 'Total Interest Paid (kr)'], axis = 1)
+        st.table(top_scenarios_details)
