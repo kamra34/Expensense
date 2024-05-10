@@ -31,7 +31,7 @@ def add_csv_to_s3(bucket_name, file_path, csv_content=""):
 # Display title
 st.title('Existing in and adding to S3 bucket')
 
-# Define your S3 bucket name
+# S3 bucket name
 bucket_name = 'streamlitbucketkamra34'
 
 # Display existing .csv files
